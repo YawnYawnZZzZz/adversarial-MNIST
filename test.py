@@ -168,51 +168,50 @@ def main(_):
       if mnist.test.labels[i]==2:
         twos_list.append(i)
 
-    # Define a function to modify images in two ways
-    def modify_img(eps, img, label):
-      # Calculate gradient = d(loss)/dx, where loss is the cross entropy when y=2 (true label)
-      gradient = sess.run([grad_x], feed_dict={x:img.reshape([-1,784]), y_:label.reshape([-1]), keep_prob:1})
-      gradient = numpy.reshape(gradient, (1,784))
-      # Calculate gradient6 = d(loss6)/dx, where loss6 is the cross entropy when y=6 (target label)
-      gradient6 = sess.run([grad_x], feed_dict={x:img.reshape([-1,784]), y_:[6], keep_prob:1})
-      gradient6 = numpy.reshape(gradient6,(1,784))
+    # Define function to modify images
+    def modify_img(eps, img, label, epochs):
+      '''
+      Modify img by stepping up the y=6 mountain multiple times.
+      -----
+      eps: float, epsilon so that in each step new_image = -epsilon*gradient + old_image
+      img: numpy.ndarray, original img from mnist.test.images
+      label: int, original label of img from mnist.test.labels
+      epochs: int, number of steps we take up the hill.
+      -----
+      Returns: 
+      delta: list, difference between old image and new image (-epsilon*gradient)
+      new_pred: list of one int, classification of new image by the model
+      new_probs[0][6]: float, the probability of the new image being a 6, given by the model; confidence of the model
+      new_x: numpy.ndarray, new image
+      '''
+      new_x = img.reshape([-1,784])
+      original_y = label.reshape([-1])
+      for i in range(epochs):
+        # Find gradient on the y=6 mountain
+        gradient6 = sess.run([grad_x], feed_dict={x:new_x, y_:[6], keep_prob:1})
+        gradient6 = numpy.reshape(gradient6,(1,784))
+        # Modify new image
+        delta = -eps*numpy.sign(gradient6)
+        new_x = delta + new_x
+        # Truncate values so the values in new image is in [0,1]
+        new_x[new_x>1] = 1
+        new_x[new_x<0] = 0
 
-      # First: modify image by adding to it 0.1*sign(d(loss)/dx) 
-      # and subtracting from it 0.1*sign(d(loss6)/dx)
-      # so we step down on the y=6 mountain, and step up on the y=2 mountain.
-      new_img2to6 = eps*numpy.sign(gradient-gradient6) + img.reshape([-1,784])
-      new_img2to6 = new_img2to6.reshape([-1,784])
-      new_pred2to6 = sess.run([prediction], feed_dict={x: new_img2to6, y_:label.reshape([-1]), keep_prob:1})
+      # Run model on new image, find new prediction and the probability the model assigns to each of 0-9.
+      new_pred, new_probs = sess.run([prediction, tf.nn.softmax(y_conv)], feed_dict={x: new_x, y_:original_y, keep_prob:1})
 
-      # Second: modify image by subtracting from it 0.1*sign(d(loss6)/dx)
-      # so we step down on the y=6 mountain only.
-      new_img6 = -eps*numpy.sign(gradient6) + img.reshape([-1,784])
-      new_img6 = new_img6.reshape([-1,784])
-      new_pred6 = sess.run([prediction], feed_dict={x:new_img6, y_:label.reshape([-1]), keep_prob:1})
-
-      # Also calculate the prediction if we only step down the y=2 mountain (as in the previous version)
-      new_img = eps*numpy.sign(gradient) + img.reshape([-1,784])
-      new_img = new_img.reshape([-1,784])
-      new_pred = sess.run([prediction], feed_dict={x: new_img, y_:label.reshape([-1]), keep_prob:1})
-      return new_pred, new_pred2to6, new_pred6
+      return delta, new_pred, new_probs[0][6], new_x
     
-    # Run modify_img() to see how well each of the two methods work.
+    # Apply modify_img() to see the ratio of images of 2 which we've successfully turned into a 6
     counter = 0
-    counter2to6 = 0
-    counter6 = 0
     for i in twos_list:
       img = mnist.test.images[i]
       label = mnist.test.labels[i]
-      pred_after_mod, pred_after_mod2to6, pred_after_mod6 = modify_img(0.25, img, label)
+      pred_after_mod = modify_img(0.1, img, label, 8)[1]
       if pred_after_mod == [6]:
         counter += 1
-      if pred_after_mod2to6 == [6]:
-        counter2to6 += 1
-      if pred_after_mod6 == [6]:
-        counter6 += 1
-    print("Ratio of 6 after stepping down on y=2: %.2f" % (counter/len(twos_list)))
-    print('Ratio of 6 after stepping down on y=2 and up on y=6: %.2f' % (counter2to6/len(twos_list)))
-    print('Ratio of 6 after stepping up on y=6: %.2f' % (counter6/len(twos_list)))
+    print('Ratio of 6 after stepping up on y=6: %.2f' % (counter/len(twos_list)))
+
 
 
 if __name__ == '__main__':
