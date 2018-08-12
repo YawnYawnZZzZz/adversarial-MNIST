@@ -154,7 +154,7 @@ def main(_):
 
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    for i in range(2000): ### was 20000
+    for i in range(2001): ### was 20000
       batch = mnist.train.next_batch(50)
       if i % 100 == 0:
         train_accuracy = accuracy.eval(feed_dict={
@@ -162,14 +162,26 @@ def main(_):
         print('step %d, training accuracy %g' % (i, train_accuracy))
       train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
 
+
+    # compute in batches to avoid OOM on GPUs 
+    accuracy_l = []
+    for _ in range(20):
+      batch = mnist.test.next_batch(500, shuffle=False)
+      accuracy_l.append(accuracy.eval(feed_dict={x: batch[0], 
+                                                 y_: batch[1], 
+                                                 keep_prob: 1.0}))
+    print('test accuracy %g' % numpy.mean(accuracy_l))
+
+
     # Find the list of all images of 2 from mnist.test
+    print('Finding images of 2...')
     twos_list = []
     for i in range(len(mnist.test.labels)):
       if mnist.test.labels[i]==2:
         twos_list.append(i)
 
     # Define function to modify images
-    def modify_img(eps, img, label, epochs):
+    def modify_img(eps, img, label, epochs, plot=False):
       '''
       Modify img by stepping up the y=6 mountain multiple times.
       -----
@@ -177,15 +189,19 @@ def main(_):
       img: numpy.ndarray, original img from mnist.test.images
       label: int, original label of img from mnist.test.labels
       epochs: int, number of steps we take up the hill.
+      plot: bool, set True to return valures required for graph plotting
       -----
       Returns: 
       delta: list, difference between old image and new image (-epsilon*gradient)
       new_pred: list of one int, classification of new image by the model
       new_probs[0][6]: float, the probability of the new image being a 6, given by the model; confidence of the model
       new_x: numpy.ndarray, new image
+      probs[0][2]: float, the probability of the new image being a 2, given by the model
       '''
       new_x = img.reshape([-1,784])
       original_y = label.reshape([-1])
+      if plot:
+        probs, pred = sess.run([tf.nn.softmax(y_conv), prediction], feed_dict={x:new_x, y_:original_y, keep_prob:1})
       for i in range(epochs):
         # Find gradient on the y=6 mountain
         gradient6 = sess.run([grad_x], feed_dict={x:new_x, y_:[6], keep_prob:1})
@@ -198,20 +214,62 @@ def main(_):
         new_x[new_x<0] = 0
 
       # Run model on new image, find new prediction and the probability the model assigns to each of 0-9.
-      new_pred, new_probs = sess.run([prediction, tf.nn.softmax(y_conv)], feed_dict={x: new_x, y_:original_y, keep_prob:1})
-
-      return delta, new_pred, new_probs[0][6], new_x
+      if not plot:
+        new_pred = sess.run(prediction, feed_dict={x: new_x, y_:original_y, keep_prob:1})
+        return new_pred
+      else:
+        new_probs = sess.run(tf.nn.softmax(y_conv), feed_dict={x: new_x, y_:original_y, keep_prob:1})
+        return delta, new_probs[0][6], new_x, probs[0][2], pred[0]
     
     # Apply modify_img() to see the ratio of images of 2 which we've successfully turned into a 6
+    print('Modifying images...')
+    eps = 0.1
+    epochs = 5
     counter = 0
     for i in twos_list:
       img = mnist.test.images[i]
       label = mnist.test.labels[i]
-      pred_after_mod = modify_img(0.1, img, label, 8)[1]
+      pred_after_mod = modify_img(eps, img, label, epochs)
       if pred_after_mod == [6]:
         counter += 1
     print('Ratio of 6 after stepping up on y=6: %.2f' % (counter/len(twos_list)))
 
+    # Select 10 images randomly to plot the corresponding graphs
+    to_print = numpy.random.choice(twos_list, 10)
+    cols = 3
+    rows = 10
+    fig = plt.figure(figsize=(8,26))
+    fig_no = 1
+    counter = 0
+    for i in to_print:
+      img = mnist.test.images[i]
+      label = mnist.test.labels[i]
+      delta, new_prob, new_x, prob, pred = modify_img(eps, img, label, epochs, plot=True)
+      fig.add_subplot(rows, cols, fig_no)
+      plt.imshow(img.reshape(28,28))
+      plt.xticks([])
+      plt.yticks([])
+      plt.title("%d \n %.2f confidence" % (pred, 100*prob))
+      plt.gray()
+      fig.add_subplot(rows, cols, fig_no+1)
+      plt.imshow(delta.reshape(28,28))
+      plt.xticks([])
+      plt.yticks([])
+      plt.title("delta")
+      plt.gray()
+      fig.add_subplot(rows, cols, fig_no+2)
+      plt.title("6\n %.2f confidence" % (100*new_prob))
+      plt.imshow(new_x.reshape(28,28))
+      plt.xticks([])
+      plt.yticks([])
+      plt.gray()
+
+      fig_no += 3
+
+    plt.subplots_adjust(left=None, bottom=None, right=None, top=None,
+                wspace=0.1, hspace=2)
+    plt.show()
+    fig.savefig('eps=%f epochs=%i.png' %(eps,epochs))
 
 
 if __name__ == '__main__':
