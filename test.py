@@ -16,10 +16,17 @@ import tensorflow as tf
 
 import numpy
 
+### MY MODIFICATIONS BEGIN
+# import plt to plot
+import matplotlib.pyplot as plt
+### MY MODIFICATIONS END
+
 FLAGS = None
 
-
-def deepnn(x):
+### MY MODIFICATIONS BEGIN
+# Pass y_ into deepnn(), in order to define 'loss' inside deepnn()
+def deepnn(x, y_):
+### MY MODIFICATIONS END
   """deepnn builds the graph for a deep net for classifying digits.
   Args:
     x: an input tensor with the dimensions (N_examples, 784), where 784 is the
@@ -77,7 +84,19 @@ def deepnn(x):
     b_fc2 = bias_variable([10])
 
     y_conv = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
-  return y_conv, keep_prob
+
+  ### MY MODIFICATIONS BEGIN
+  # Move difinitions of loss here, from function main(_)
+  with tf.name_scope('loss'):
+    cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+        labels=y_, logits=y_conv)
+  cross_entropy = tf.reduce_mean(cross_entropy)
+  # define grad_x, the derivative of loss (cross_entropy) with respect to input x
+  grad_x = tf.gradients(ys=cross_entropy, xs=x)
+
+  # In addition to y_conv, return also grad_x and cross_entropy. 
+  return y_conv, grad_x, cross_entropy, keep_prob
+  ### MY MODIFICATIONS END
 
 
 def conv2d(x, W):
@@ -109,23 +128,22 @@ def main(_):
 
   # Create the model
   x = tf.placeholder(tf.float32, [None, 784])
-
-  # Define loss and optimizer
   y_ = tf.placeholder(tf.int64, [None])
 
-  # Build the graph for the deep net
-  y_conv, keep_prob = deepnn(x)
-
-  with tf.name_scope('loss'):
-    cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-        labels=y_, logits=y_conv)
-  cross_entropy = tf.reduce_mean(cross_entropy)
+  ### MY MODIFICATIONS BEGIN
+  # Build the graph for the deep net (minor modifications due to change to input of deepnn)
+  y_conv, grad_x, cross_entropy, keep_prob = deepnn(x, y_)
+  ### MY MODIFICATIONS END
 
   with tf.name_scope('adam_optimizer'):
     train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 
   with tf.name_scope('accuracy'):
-    correct_prediction = tf.equal(tf.argmax(y_conv, 1), y_)
+    ### MY MODIFICATIONS 1 BEGIN
+    # define prediction = tf.argmax(y_conv, 1), to be used later
+    prediction = tf.argmax(y_conv, 1)
+    ### END OF MY 1 MODIFICATIONS
+    correct_prediction = tf.equal(prediction, y_)
     correct_prediction = tf.cast(correct_prediction, tf.float32)
   accuracy = tf.reduce_mean(correct_prediction)
 
@@ -136,7 +154,7 @@ def main(_):
 
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    for i in range(2000): ### was 20000
+    for i in range(200): ### was 20000
       batch = mnist.train.next_batch(50)
       if i % 100 == 0:
         train_accuracy = accuracy.eval(feed_dict={
@@ -144,14 +162,27 @@ def main(_):
         print('step %d, training accuracy %g' % (i, train_accuracy))
       train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
 
-    # compute in batches to avoid OOM on GPUs 
-    accuracy_l = []
-    for _ in range(20):
-      batch = mnist.test.next_batch(500, shuffle=False)
-      accuracy_l.append(accuracy.eval(feed_dict={x: batch[0], 
-                                                 y_: batch[1], 
-                                                 keep_prob: 1.0}))
-    print('test accuracy %g' % numpy.mean(accuracy_l))
+  ### MY MODIFICATIONS BEGIN
+  # Run on a 2
+    img = mnist.test.images[1]
+    label = mnist.test.labels[1]
+    gradient, pred, probs = sess.run([grad_x, prediction, 
+tf.nn.softmax(y_conv)], feed_dict={x:img.reshape([-1,784]), y_:label.reshape([-1]), keep_prob:1})
+    gradient = numpy.reshape(gradient,(1,784))
+    print('prediction:', pred)
+    print('probs:',probs)
+    # Modify x
+    eps = 0.1
+    new_img = eps * numpy.sign(gradient) + img.reshape([-1,784])
+    new_img.reshape([-1,784])
+    new_pred, new_probs = sess.run([prediction, 
+tf.nn.softmax(y_conv)], feed_dict={x: new_img, y_:label.reshape([-1]), keep_prob:1})
+    print('new pred:', new_pred)
+    print('new_probs:', new_probs)
+    plt.imshow(new_img.reshape(28,28))
+    plt.gray()
+    plt.show()
+  ### MY MODIFICATIONS END
 
 
 if __name__ == '__main__':
