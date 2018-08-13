@@ -1,6 +1,8 @@
 # adversarial-MNIST
 Create adversarial images to fool a MNIST classifier in TensorFlow
 
+The code is in [main.py](https://github.com/YawnYawnZZzZz/adversarial-MNIST/blob/master/main.py). The relevant plots are in [plots](https://github.com/YawnYawnZZzZz/adversarial-MNIST/tree/master/plots).
+
 ### Steps taken:
 There are comments to each item in commit history.
 1. We start with sample code from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/mnist/mnist_deep.py. We aim to create adversarial images of '2' so the classifier thinks they are '6'.
