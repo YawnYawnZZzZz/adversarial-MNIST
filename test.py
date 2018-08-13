@@ -170,10 +170,12 @@ def main(_):
       accuracy_l.append(accuracy.eval(feed_dict={x: batch[0], 
                                                  y_: batch[1], 
                                                  keep_prob: 1.0}))
-    print('test accuracy %g' % numpy.mean(accuracy_l))
+    test_accu = numpy.mean(accuracy_l)
+    print('test accuracy %g' % test_accu)
 
 
     # Find the list of all images of 2 from mnist.test
+    # The list has length 1032, which is not too large. So keep it on the go.
     print('Finding images of 2...')
     twos_list = []
     for i in range(len(mnist.test.labels)):
@@ -188,7 +190,7 @@ def main(_):
       eps: float, epsilon so that in each step new_image = -epsilon*gradient + old_image
       img: numpy.ndarray, original img from mnist.test.images
       label: int, original label of img from mnist.test.labels
-      epochs: int, number of steps we take up the hill.
+      epochs: int, number of steps we take up the hill
       plot: bool, set True to return valures required for graph plotting
       -----
       Returns: 
@@ -196,7 +198,8 @@ def main(_):
       new_pred: list of one int, classification of new image by the model
       new_probs[0][6]: float, the probability of the new image being a 6, given by the model; confidence of the model
       new_x: numpy.ndarray, new image
-      probs[0][2]: float, the probability of the new image being a 2, given by the model
+      probs[0][pred[0]]: float, confidence of model in classifying the original image
+      pred[0]: int, in range [0,9], prediction of the original image by model
       '''
       new_x = img.reshape([-1,784])
       original_y = label.reshape([-1])
@@ -219,57 +222,84 @@ def main(_):
         return new_pred
       else:
         new_probs = sess.run(tf.nn.softmax(y_conv), feed_dict={x: new_x, y_:original_y, keep_prob:1})
-        return delta, new_probs[0][6], new_x, probs[0][2], pred[0]
+        return delta, new_probs[0][6], new_x, probs[0][pred[0]], pred[0]
     
-    # Apply modify_img() to see the ratio of images of 2 which we've successfully turned into a 6
-    print('Modifying images...')
-    eps = 0.1
-    epochs = 5
-    counter = 0
-    for i in twos_list:
-      img = mnist.test.images[i]
-      label = mnist.test.labels[i]
-      pred_after_mod = modify_img(eps, img, label, epochs)
-      if pred_after_mod == [6]:
-        counter += 1
-    print('Ratio of 6 after stepping up on y=6: %.2f' % (counter/len(twos_list)))
-
-    # Select 10 images randomly to plot the corresponding graphs
-    to_print = numpy.random.choice(twos_list, 10)
-    cols = 3
-    rows = 10
-    fig = plt.figure(figsize=(8,26))
-    fig_no = 1
-    counter = 0
-    for i in to_print:
-      img = mnist.test.images[i]
-      label = mnist.test.labels[i]
-      delta, new_prob, new_x, prob, pred = modify_img(eps, img, label, epochs, plot=True)
+    # An auxiliary function to plot figures
+    def plot_in_fig(fig, image, fig_no, rows, cols):
       fig.add_subplot(rows, cols, fig_no)
-      plt.imshow(img.reshape(28,28))
-      plt.xticks([])
-      plt.yticks([])
-      plt.title("%d \n %.2f confidence" % (pred, 100*prob))
-      plt.gray()
-      fig.add_subplot(rows, cols, fig_no+1)
-      plt.imshow(delta.reshape(28,28))
-      plt.xticks([])
-      plt.yticks([])
-      plt.title("delta")
-      plt.gray()
-      fig.add_subplot(rows, cols, fig_no+2)
-      plt.title("6\n %.2f confidence" % (100*new_prob))
-      plt.imshow(new_x.reshape(28,28))
+      plt.imshow(image.reshape(28,28))
       plt.xticks([])
       plt.yticks([])
       plt.gray()
+    
+    def plot_image(eps, epochs, rows=10, cols=3):
+      '''
+      Select 10 images randomly to plot the corresponding graphs. Save the figure in the end.
+      -----
+      Input:
+      eps: float, epsilon so that in each step new_image = -epsilon*gradient + old_image
+      epochs: int, number of steps we take up the hill
+      rows=10: we select 10 images randomly from MNIST.test
+      cols=3: corresponds to the columns of original image, delta, modified image
+      -----
+      Return: void
+      '''
+      to_print = numpy.random.choice(twos_list, 10)
+      fig = plt.figure(figsize=(8,26))
+      fig_no = 1
+      counter = 0
+      for i in to_print:
+        img = mnist.test.images[i]
+        label = mnist.test.labels[i]
+        delta, new_prob, new_x, prob, pred = modify_img(eps, img, label, epochs, plot=True)
+        
+        plot_in_fig(fig, img, fig_no, rows, cols)
+        plt.title("%d \n %.2f confidence" % (pred, 100*prob))
 
-      fig_no += 3
+        plot_in_fig(fig, delta, fig_no+1, rows, cols)
+        plt.title("delta")
 
-    plt.subplots_adjust(left=None, bottom=None, right=None, top=None,
-                wspace=0.1, hspace=2)
-    plt.show()
-    fig.savefig('eps=%f epochs=%i.png' %(eps,epochs))
+        plot_in_fig(fig, new_x, fig_no+2, rows, cols)
+        plt.title("6\n %.2f confidence" % (100*new_prob))
+
+        fig_no += 3
+
+      plt.subplots_adjust(left=None, bottom=None, right=None, top=None,
+                  wspace=None, hspace=2)
+      plt.show()
+      fig.savefig('eps=%.2f_epochs=%i_test_accu%.2f.png' %(eps,epochs, test_accu))
+
+    
+    def modify_all_images_and_plot(eps=0.1, epochs=8):
+      '''
+      Apply modify_img() to see the ratio of images of 2 which we've successfully turned into a 6. Then plot graphs.
+      Shown above each graph in first column (original graphs) is the predicted label, and the corresponding confidence in model.
+      Shown in the second column are the modifications, i.e. difference between modified and original graphs.
+      Shown above each graph in third column (modifed graphs) is the probability that the graph is a 6, given by the model.
+      Note: We did not scale delta to be in range [0,1]. But we can see its noisiness from the plotted graphs (although they are not noises).
+      -----
+      Input:
+      eps: float, epsilon so that in each step new_image = -epsilon*gradient + old_image
+      epochs: int, number of steps we take up the hill
+      -----
+      Return: void
+      '''
+      print('Modifying images...')
+      counter = 0
+      for i in twos_list:
+        img = mnist.test.images[i]
+        label = mnist.test.labels[i]
+        pred_after_mod = modify_img(eps, img, label, epochs)
+        if pred_after_mod == [6]:
+          counter += 1
+      print('Ratio of 6 after stepping up on y=6: %.2f' % (counter/len(twos_list)))
+      plot_image(eps, epochs)
+    
+    
+
+
+    # Run the functions
+    modify_all_images_and_plot(eps=0.1, epochs=8)
 
 
 if __name__ == '__main__':
