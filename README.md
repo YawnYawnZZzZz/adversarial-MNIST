@@ -1,10 +1,10 @@
 # adversarial-MNIST
 Create adversarial images to fool a MNIST classifier in TensorFlow
 
-The code is in [main.py](https://github.com/YawnYawnZZzZz/adversarial-MNIST/blob/master/main.py). The relevant plots are in [plots](https://github.com/YawnYawnZZzZz/adversarial-MNIST/tree/master/plots).
+The code is in [main.py](https://github.com/YawnYawnZZzZz/adversarial-MNIST/blob/master/main.py). The relevant plots are in [plots](https://github.com/YawnYawnZZzZz/adversarial-MNIST/tree/master/plots). There are comments to each item in commit history.
 
 ### Steps taken:
-There are comments to each item in commit history.
+
 1. We start with sample code from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/mnist/mnist_deep.py. We aim to create adversarial images of '2' so the classifier thinks they are '6'.
 
 1. We would like to apply 'fast gradient sign method' (see [Goodfellow](https://arxiv.org/abs/1412.6572)) after training the network. Compare the following two ways: (Ah! I put 'up' and 'down' the wrong way round in the comments in code.)
